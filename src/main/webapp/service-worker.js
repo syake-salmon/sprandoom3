@@ -1,7 +1,7 @@
 // キャッシュ名とキャッシュ対象の指定
-var CACHE_NAME = 'sprandoom2-caches';
+var CACHE_NAME = 'sprandoom3-caches';
 var urlsToCache = [
-  '/sprandoom2/'
+  '/sprandoom3/'
 ];
 
 // インストール処理
