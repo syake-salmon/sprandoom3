@@ -1,12 +1,12 @@
 package com.syakeapps.sprandoom3.view.bean;
 
 import java.io.Serializable;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Random;
 import java.util.ResourceBundle;
 import java.util.ResourceBundle.Control;
 import java.util.stream.Collectors;
@@ -23,12 +23,14 @@ import javax.transaction.Transactional;
 import com.syakeapps.sprandoom3.jpa.bean.Weapon;
 import com.syakeapps.sprandoom3.jpa.bean.WeaponClass;
 
+import lombok.Getter;
+import lombok.Setter;
 import net.bootsfaces.utils.FacesMessages;
 
 @SuppressWarnings("serial")
 @SessionScoped
-@Named(value = "BB")
-public class BackingBean implements Serializable {
+@Named(value = "IDX_BB")
+public class IndexBackingBean implements Serializable {
 
     @Inject
     private ApplicationContext context;
@@ -39,24 +41,31 @@ public class BackingBean implements Serializable {
     private ResourceBundle bundle;
 
     /* Randomizer User Setting */
+    @Getter(onMethod_ = { @lombok.Generated })
+    @Setter(onMethod_ = { @lombok.Generated })
     private String selectedClassIds;
+    @Getter(onMethod_ = { @lombok.Generated })
+    @Setter(onMethod_ = { @lombok.Generated })
     private int selectedSubId = 0;
+    @Getter(onMethod_ = { @lombok.Generated })
+    @Setter(onMethod_ = { @lombok.Generated })
     private int selectedSpecialId = 0;
 
     /* Randomized Weapon */
+    SecureRandom rand;
+    @Getter(onMethod_ = { @lombok.Generated })
     private Weapon pickupedWeapon;
 
     @PostConstruct
-    public void postConstruct() {
+    public void postConstruct() throws NoSuchAlgorithmException {
         bundle = ResourceBundle.getBundle("locale.Messages",
                 FacesContext.getCurrentInstance().getViewRoot().getLocale(),
                 Control.getNoFallbackControl(ResourceBundle.Control.FORMAT_DEFAULT));
 
         List<WeaponClass> classes = context.getClasses();
-        selectedClassIds = classes.stream().map(c -> {
-            return String.valueOf(c.getId());
-        }).collect(Collectors.joining(","));
+        selectedClassIds = classes.stream().map(c -> String.valueOf(c.getId())).collect(Collectors.joining(","));
 
+        rand = SecureRandom.getInstanceStrong();
         pickupedWeapon = context.getWeapons().get(0);
 
         FacesMessages.info(bundle.getString("MSG_INFO_INITIALIZED"));
@@ -64,90 +73,62 @@ public class BackingBean implements Serializable {
 
     @Transactional
     public void randomizeWeapon() {
-        /* filtering by class */
+        /* class setting check */
         if (selectedClassIds == null || selectedClassIds.isEmpty()) {
             FacesMessages.warning(bundle.getString("MSG_WARN_CLASS_IS_REQUIRED"));
             return;
         }
 
-        List<Integer> convertedIds = Arrays.asList(selectedClassIds.split(",")).stream().map(strId -> {
-            return Integer.valueOf(strId);
-        }).collect(Collectors.toList());
+        /* filtering by settings */
+        List<Weapon> candidates = createCandidates();
 
-        List<Weapon> weapons = new ArrayList<>();
+        /* size check */
+        if (candidates.isEmpty()) {
+            FacesMessages.warning(bundle.getString("MSG_WARN_NO_WEAPON_HIT"));
+            return;
+        }
+
+        /* pick up a random weapon */
+        pickupedWeapon = pickupRandom(candidates);
+    }
+
+    private List<Weapon> createCandidates() {
+        List<Weapon> candidate = new ArrayList<>();
+
+        List<Integer> convertedIds = Arrays.asList(selectedClassIds.split(",")).stream().map(Integer::valueOf).toList();
+
         if (convertedIds.size() == context.getClasses().size()) {
-            weapons = context.getWeapons();
+            candidate = context.getWeapons();
         } else {
             List<WeaponClass> classes = em.createNamedQuery(WeaponClass.FIND_BY_IDS, WeaponClass.class)
                     .setParameter("ids", convertedIds).getResultList();
+
             for (int i = 0; i < classes.size(); i++) {
-                weapons.addAll(classes.get(i).getWeapons());
+                candidate.addAll(classes.get(i).getWeapons());
             }
         }
 
         /* filtering by sub */
         if (selectedSubId != 0) {
-            Iterator<Weapon> i = weapons.iterator();
-            while (i.hasNext()) {
-                Weapon w = i.next();
-                if (w.getSub().getId() != selectedSubId) {
-                    i.remove();
-                }
-            }
+            candidate = candidate.stream().filter(w -> w.getSub().getId() == selectedSubId)
+                    .collect(Collectors.toList());
         }
 
         /* filtering by special */
         if (selectedSpecialId != 0) {
-            Iterator<Weapon> i = weapons.iterator();
-            while (i.hasNext()) {
-                Weapon w = i.next();
-                if (w.getSpecial().getId() != selectedSpecialId) {
-                    i.remove();
-                }
-            }
+            candidate = candidate.stream().filter(w -> w.getSpecial().getId() == selectedSpecialId)
+                    .collect(Collectors.toList());
         }
 
-        /* size check */
-        if (weapons.size() == 0) {
-            FacesMessages.warning(bundle.getString("MSG_WARN_NO_WEAPON_HIT"));
-            return;
-        }
+        return candidate;
+    }
 
-        /* pick a random number */
-        int r = new Random().nextInt(weapons.size());
-        pickupedWeapon = weapons.get(r);
+    private <T> T pickupRandom(List<T> candidates) {
+        return candidates.get(rand.nextInt(candidates.size()));
     }
 
     /* GETTER & SETTER */
     public Locale getUserLocale() {
         return bundle.getLocale();
-    }
-
-    public String getSelectedClassIds() {
-        return selectedClassIds;
-    }
-
-    public void setSelectedClassIds(String selectedClassIds) {
-        this.selectedClassIds = selectedClassIds;
-    }
-
-    public int getSelectedSubId() {
-        return selectedSubId;
-    }
-
-    public void setSelectedSubId(int selectedSubId) {
-        this.selectedSubId = selectedSubId;
-    }
-
-    public int getSelectedSpecialId() {
-        return selectedSpecialId;
-    }
-
-    public void setSelectedSpecialId(int selectedSpecialId) {
-        this.selectedSpecialId = selectedSpecialId;
-    }
-
-    public Weapon getPickupedWeapon() {
-        return pickupedWeapon;
     }
 }
